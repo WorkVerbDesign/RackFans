@@ -5,12 +5,30 @@
 /* 3 fan Noctua rack panel
  _______   ______   _______
 [ Fan 1 ] [ Fan2 ] [ Fan 3 ]
-[ D5PWM ] [  D9  ] [ D6PWM ]
+[ D5PWM ] [  D4  ] [ D6PWM ]
 
-outTemp: 21 inTemp: 34 Calc: 3 Set: 31 Output: 6
-Device 0 Address: 
-Device 1 Address: 
+the math is weird, but a delta is calculated from the
+set point, which scales to the ambient temp.
+that delta is scaled and applied to a control
+highest temp in PC controls the fans. 
+
+everything else is just for fun, and to make it run automatically
+if unplugged it should go to sleep.
+
+testing: 
+with the 3 fans running full and the PC idling and just doing whatever
+(streams and what not) it's running at 43 degrees at the PSU. no fans is 49.
+cpu is super cool, alas the sensor is just in air. 
+ambient in the shop is 18.
+
 */
+
+/*-----   Settings    ------*/
+//needs offset for set probably, new setup gets way more direct heat read.
+const float SetHigh = 22.0; // some value over ambient to start calcing
+const float SetScale = 0.2; // FanSpeed + (temp - SetTemp)*SetScale 
+const int badReadNum = 10;
+const int goodReadNum = 4;
 
 /*-----   Pins    ------*/
 const int fanPin1 = 4;
@@ -20,12 +38,10 @@ const int DATA_PIN = 10;
 const int CLOCK_PIN = 11;
 const int oneWirePin = 3;
 const int LedPin = LED_BUILTIN;
+
+/*-----   Fixed Settings    ------*/
 const int NUM_LEDS = 12;
-const float SetHigh = 22.0; // some value over ambient to start calcing
-const float SetScale = 0.2; // FanSpeed + (temp - SetTemp)*SetScale 
 const float badRead = -127.00;
-const int badReadNum = 10;
-const int goodReadNum = 4;
 
 /*----- Glow Balls ----*/
 float cpuTemp = 0;
@@ -285,6 +301,27 @@ void endFlash(){
     delay(200);
     b++;
   }
+}
+
+
+//I want like a cylon purple wipe
+void endCharge(){
+  if(animBuddy){
+    for(int i = 0; i<NUM_LEDS; i++){
+      leds[i] = CHSV(gHue++, 255, 255);
+      FastLED.show();
+      fadeall();
+      animBuddy = 0;
+      delay(10);
+    }  
+  }else{
+    for(int i = (NUM_LEDS)-1; i >= 0; i--){
+      leds[i] = CHSV(gHue++, 255, 255);
+      FastLED.show();
+      fadeall();
+      animBuddy = 1;
+      delay(10);
+    }
 }
 
 DEFINE_GRADIENT_PALETTE( lightGradnt ){
