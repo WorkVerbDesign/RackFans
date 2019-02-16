@@ -21,6 +21,13 @@ with the 3 fans running full and the PC idling and just doing whatever
 cpu is super cool, alas the sensor is just in air. 
 ambient in the shop is 18.
 
+
+todo:
+proper background animations based off hue counter
+I really want to keep all delays out of this things so it functions
+for years at a time.
+
+what's the second dallas semi bad read number? I forget.
 */
 
 /*-----   Settings    ------*/
@@ -34,26 +41,30 @@ const int goodReadNum = 4;
 const int fanPin1 = 4;
 const int pwmFanPin2 = 6;
 const int pwmFanPin3 = 5;
-const int DATA_PIN = 10;
-const int CLOCK_PIN = 11;
+const int ledDataPin = 10;
+const int ledClockPin = 11;
 const int oneWirePin = 3;
-const int LedPin = LED_BUILTIN;
+const int intLedPin = LED_BUILTIN;
 
 /*-----   Fixed Settings    ------*/
-const int NUM_LEDS = 12;
+const int numLed = 12;
 const float badRead = -127.00;
 
 /*----- Glow Balls ----*/
 float cpuTemp = 0;
 float pwrTemp = 0;
 float ambTemp = 0;
+
 int fanSpeed = 0;
+
 int cpusBad = 0;
 int pwrBad = 0;
 int ambBad = 0;
+
 bool readFlag = 0; //true if fake news
-uint8_t gHue = 0;
+
 bool animBuddy = 0; //for fun animation
+uint8_t gHue = 0;
 
 //thermometer addresses
 DeviceAddress pwrAddy = {0x28, 0xFF, 0x8E, 0x25, 0xC3, 0x16, 0x03, 0xC3};
@@ -65,7 +76,7 @@ DeviceAddress ambAddy = {0x28, 0xFF, 0xBF, 0xFE, 0xC2, 0x16, 0x03, 0xB4};
 
 /*----- Li-berry stuff ----*/
 //fastLED
-CRGB leds[NUM_LEDS];
+CRGB leds[numLed];
 
 //dallas 1w
 OneWire oneWire(oneWirePin);
@@ -82,30 +93,39 @@ void setup() {
   Serial.begin(115200);
 
   //LEDs
-  FastLED.addLeds<LPD8806, DATA_PIN, CLOCK_PIN, BRG>(leds, NUM_LEDS);
+  FastLED.addLeds<LPD8806, ledDataPin, ledClockPin, BRG>(leds, numLed);
   
   //tempers begarn
   sensors.begin();
 
+  //tell the user what's up in a fun way
   endCharge();
 }
 
-/*----- Loops ----*/
+/*----- Looooops ----*/
 void loop() {
   tempReads();
-  
+
+  //flag to ignore bad reads
   if(readFlag){
     fanCalc();
     fanControl();
   }
   
   tempAnim();
+  
   serialPrints();
+ 
  // EVERY_N_MILLISECONDS( 20 ) { gHue++; } //use this later for better temp animations
-  delay(200);
+  
+  delay(200); //not a huge fan, I think the sensor read will delay it
+  
+  //troubleshooting/setup
   //findSensors();
 }
 
+
+//read temps into globals, set flags if bad reads
 void tempReads(){
   sensors.requestTemperatures();
 
@@ -131,11 +151,11 @@ void tempReads(){
     pwrBad = 0;
     ambBad = 0;
     
-    //let's inform the user and give temp sensors a min
+    //let's inform the user and give temp sensors a bit
     endFlash();
     
     //this runs the sleep program
-    //it will exit with good reads for the sensors
+    //it will exit with # good reads in a row for the sensors
     getfucked();
   }
 
@@ -147,24 +167,22 @@ void tempReads(){
   }
 }
 
+//we kinda tried to figure this one out on stream
+//it's just a basic numerical control to lag behind activity
 void fanCalc(){
+  //ignore the cool ones, like relationships. 
   float inTemp = max(cpuTemp, pwrTemp);
-  
-  float trigTemp = ambTemp + SetHigh;
-  float delta = inTemp - trigTemp;
 
-  float outCalc;
-  outCalc = fanSpeed + ( delta * SetScale);
+  //temp above ambient is our *set point*
+  float setTemp = ambTemp + SetHigh;
+  float delta = inTemp - setTemp;
+
+  float outCalc = fanSpeed + ( delta * SetScale);
   fanSpeed = (int) constrain(outCalc, 0, 255);
-  
-//  if(inTemp >= trigTemp + 1 || inTemp <= trigTemp - 1 ){ 
-//    float outCalc;
-//    outCalc = fanSpeed + ( delta * SetScale);
-//    fanSpeed = (int) constrain(outCalc, 0, 255);
-//  }
 }
 
-//need global fSpeed 0-255
+//need global fanSpeed 0-255
+//I need to break my addiction to globals
 void fanControl(){  
   if(fanSpeed > 235){
     digitalWrite(fanPin1, HIGH);
@@ -181,6 +199,7 @@ void fanControl(){
   analogWrite(pwmFanPin3, fanSpeed);
 }
 
+//the walls in parenthesis look like butts
 void serialPrints(){
   Serial.print(cpuTemp);
   Serial.print(" | ");  
@@ -208,6 +227,9 @@ void getFucked(){
 
   //get stuck here and periodically check sensors
   while(exitFlag){  
+    //some troubleshooting here, if serial is plugged in I want to get data
+    findSensors();
+    
     sensors.requestTemperatures();
 
     //by index
@@ -228,11 +250,12 @@ void getFucked(){
     //can we kick it? yes we can.
     if(cpuGood == goodReadNum && pwrGood == goodReadNum && ambGood == goodReadNum){
       exitFlag = 0;
+      Serial.prinln("oh we're back, huh?");
     }
 
     //animate here for fun
     if(animBuddy){
-      for(int i = 0; i<NUM_LEDS; i++){
+      for(int i = 0; i<numLed; i++){
         leds[i] = CHSV(gHue++, 255, 255);
         FastLED.show();
         fadeall();
@@ -240,7 +263,7 @@ void getFucked(){
         delay(10);
       }  
     }else{
-      for(int i = (NUM_LEDS)-1; i >= 0; i--){
+      for(int i = (numLed)-1; i >= 0; i--){
         leds[i] = CHSV(gHue++, 255, 255);
         FastLED.show();
         fadeall();
@@ -286,14 +309,14 @@ void endFlash(){
   int b = 0;
   
   while(b <= 3){
-    for( int j = 0; j < NUM_LEDS; j++) {
+    for( int j = 0; j < numLed; j++) {
       leds[j] = CRGB::Purple;
     }
     
     FastLED.show();    
     delay(200);
     
-    for( int j = 0; j < NUM_LEDS; j++) {
+    for( int j = 0; j < numLed; j++) {
       leds[j] = CRGB::Black;
     }
     
@@ -306,34 +329,30 @@ void endFlash(){
 
 //I want like a cylon purple wipe
 void endCharge(){
-  if(animBuddy){
-    for(int i = 0; i<NUM_LEDS; i++){
-      leds[i] = CHSV(gHue++, 255, 255);
-      FastLED.show();
-      fadeall();
-      animBuddy = 0;
-      delay(10);
-    }  
-  }else{
-    for(int i = (NUM_LEDS)-1; i >= 0; i--){
-      leds[i] = CHSV(gHue++, 255, 255);
-      FastLED.show();
-      fadeall();
-      animBuddy = 1;
-      delay(10);
-    }
+  //persist perpal wiiiiipe
+  for(int i = 0; i<numLed; i++){
+    leds[i] = CRGB::Purple;
+    FastLED.show();
+    delay(10);
+  }
+  //fade out after
+  for(int i = (numLed)-1; i >= 0; i--){
+    FastLED.show();
+    fadeall();
+    delay(10);
+  }
 }
 
 DEFINE_GRADIENT_PALETTE( lightGradnt ){
   0,       0,  0,   0,   //black
-  100,   128,  0, 128,   //purp
-  200,   220, 20,   0  //orang
+  130,   128,  0, 128,   //purp
+  200,   218, 20,   0  //orang
 };
 
 void tempAnim(){
   CRGBPalette256 lightPal = lightGradnt;
 
-  for( int i = 0; i < NUM_LEDS; i++) {
+  for( int i = 0; i < numLed; i++) {
     leds[i] = ColorFromPalette(lightPal, fanSpeed); 
   }
   FastLED.show();
